@@ -371,7 +371,10 @@ belonged and how to check that it was right.
 ## Final Project Reflection — AI Collaboration
 
 *This section covers the AI 110 final project: extending PawPal+ into
-**PawPal+ Copilot**, an agentic AI planner.*
+**PawPal+ Copilot**, an agentic AI planner. The **graded** responsible-AI
+reflection (limitations, misuse, testing surprises, and AI collaboration) is the
+model card — [`model_card.md`](model_card.md); the notes below are supporting
+narrative.*
 
 ### How I used AI during development
 

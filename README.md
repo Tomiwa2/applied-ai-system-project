@@ -320,13 +320,16 @@ live demo.
 
 ## 10. Reflection on AI collaboration
 
-A full write-up is in [`reflection.md`](reflection.md#final-project-reflection--ai-collaboration).
+The full, graded responsible-AI reflection lives in **[`model_card.md`](model_card.md)**
+— limitations & biases, potential misuse & prevention, testing surprises, and my
+AI collaboration (one helpful and one flawed suggestion).
+
 In short: AI pair-programming was **most helpful** for designing the
-"LLM-proposes / rules-verify" split and for the structured-output schema; the
-most **flawed** suggestion was an early design that trusted the model's own
-"no conflicts" claim — which I replaced with the deterministic oracle. Main
-limitation: the offline stub is a simple rule parser, not a real understander;
-future work is multi-pet natural-language handling and confidence scoring.
+"LLM-proposes / rules-decide" split; the most **flawed** suggestion was an early
+design that let the model report its own "no conflicts" verdict — which I replaced
+with the deterministic oracle. Main limitation: the offline stub is a rule parser,
+not a real understander (single-pet, no real dates). See the model card for the
+full write-up.
 
 ---
 
