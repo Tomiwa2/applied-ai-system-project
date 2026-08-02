@@ -49,6 +49,10 @@ def main() -> None:
     else:
         print(f"\n⚠️  {result.conflicts_remaining} conflict(s) could not be resolved.")
 
+    print(f"\n📊 Plan confidence: {result.confidence:.2f}")
+    for note in result.confidence_notes:
+        print(f"     {note}")
+
     if result.rejected:
         print(f"\n🚫 Dropped {len(result.rejected)} unusable proposal(s) at the guardrail.")
     if result.warnings:

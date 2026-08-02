@@ -223,3 +223,79 @@ identical results on the easy case; the real signal was in the failure path,
 which only showed up under an adversarial (packed-day) test. Running both against
 the actual code — not just reading them — is what surfaced the difference.
 
+---
+
+<a name="final-project--agentic-reasoning-traces"></a>
+# Final Project — Agentic Reasoning Traces
+
+*This section supports the **Agentic Workflow Enhancement** stretch feature. It
+captures the agent's intermediate reasoning — the multi-step decision chain it
+runs on every request. These traces are produced live by
+[`agent/planner_agent.py`](agent/planner_agent.py) and written to `agent_runs.log`
+(git-ignored) on every run; a representative capture is embedded below.*
+
+## The decision chain
+
+PawPal+ Copilot is a multi-step agent, not a single prompt. Each request flows
+through a chain of **planning steps**, **tool-like calls**, and **decisions**:
+
+1. **Input guardrail** — decide whether the request is worth planning at all.
+2. **Plan** — the LLM proposes structured tasks (a tool-style structured-output
+   call, or the offline stub's rule parser).
+3. **Output guardrail** — decide, per task, whether it is valid and grounded;
+   drop the ones that aren't.
+4. **Check (the oracle)** — call `detect_conflicts()` to *decide* whether the day
+   clashes. This is a rule engine, not the model — the agent never trusts its own
+   claim that a day is clean.
+5. **Repair loop** — while conflicts remain: **decide** which task to move (keep
+   the higher-priority one), **call** `find_next_available_slot()` to find a new
+   time, move it, then **re-check**. Bounded so it always terminates.
+6. **Score & explain** — rate confidence in the plan, then have the LLM narrate it.
+
+## Trace 1 — a day with two conflicts (auto-repaired)
+
+**Request:** *"I just got a puppy named Cooper. He needs a 30-minute walk at 8am,
+feeding at 8am and 6pm, a vet visit at 3pm for 45 minutes, and a grooming session
+at 3pm."*
+
+Reasoning trace, captured verbatim from `agent_runs.log`:
+
+```
+2026-08-01 23:01:35 INFO [stub] input-guardrail: request accepted
+2026-08-01 23:01:35 INFO [stub] parse: model proposed 5 task(s)
+2026-08-01 23:01:35 INFO [stub] validate: 5 task(s) passed the guardrails
+2026-08-01 23:01:35 INFO [stub] repair: Moved 'Walk' from 08:00 to 08:30 so it no longer clashes with 'Feed' (08:00).
+2026-08-01 23:01:35 INFO [stub] repair: Moved 'Grooming' from 15:00 to 08:10 so it no longer clashes with 'Vet visit' (15:00).
+2026-08-01 23:01:35 INFO [stub] verify: oracle confirms the day is conflict-free
+2026-08-01 23:01:35 INFO [stub] confidence: plan confidence 1.00
+2026-08-01 23:01:35 INFO [stub] explain: wrote plain-language explanation
+```
+
+**What the chain decided:** the oracle found two clashes (08:00 walk vs. feed;
+15:00 grooming vs. vet). For each, the agent chose to move the *lower-priority*
+task and called the slot-finder — walk → 08:30, grooming → 08:10 — then re-checked
+until the oracle confirmed the day was clean. Confidence: **1.00** (no drops, no
+warnings, fully resolved).
+
+## Trace 2 — an impossible day (flagged, not faked)
+
+**Request:** *"Walk Rex at 8am for 600 minutes and feed Rex at 8am for 600
+minutes."* Two ten-hour tasks cannot both fit an 08:00–20:00 day.
+
+```
+INFO [stub] input-guardrail: request accepted
+INFO [stub] parse: model proposed 2 task(s)
+INFO [stub] validate: 2 task(s) passed the guardrails
+WARNING [stub] repair: Couldn't fit 'Walk' anywhere between 08:00 and 20:00 — leaving the conflict flagged.
+WARNING [stub] verify: 1 conflict(s) could not be resolved
+INFO [stub] confidence: plan confidence 0.75
+```
+
+**What the chain decided:** the slot-finder returned `None` (no room), so instead
+of pretending the day was clean, the agent **left the conflict flagged**, the
+oracle reported it, and confidence dropped to **0.75**. This is the key property —
+the agent is honest about what it *couldn't* do.
+
+*(Reproduce either trace by running `python agent_cli.py "<request>"`, or
+`python evaluate.py` for all seven scenarios; the live log is `agent_runs.log`.)*
+

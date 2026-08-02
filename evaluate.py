@@ -95,6 +95,15 @@ SCENARIOS = [
             ("all conflicts resolved", r.conflicts_remaining == 0),
         ],
     ),
+    (
+        "Impossible day is flagged honestly, not faked",
+        "Walk Rex at 8am for 600 minutes and feed Rex at 8am for 600 minutes.",
+        lambda r: [
+            ("request accepted", r.ok),
+            ("agent reports it could NOT fully resolve", r.conflicts_remaining >= 1),
+            ("confidence drops below 1.0 to signal the problem", r.confidence < 1.0),
+        ],
+    ),
 ]
 
 
@@ -102,6 +111,7 @@ def main() -> int:
     # Deterministic backend -> reproducible evaluation.
     agent = PlannerAgent(StubClient())
     total = passed = 0
+    confidences: list[float] = []  # plan-confidence ratings, for scenarios that plan
     print("PawPal+ Copilot — reliability evaluation (stub backend)\n" + "=" * 55)
 
     for name, request, check in SCENARIOS:
@@ -113,9 +123,16 @@ def main() -> int:
             total += 1
             passed += 1 if ok else 0
             print(f"    [{'x' if ok else ' '}] {label}")
+        # Report the plan's confidence rating when a plan was produced.
+        if result.ok and result.plan:
+            confidences.append(result.confidence)
+            print(f"    → plan confidence: {result.confidence:.2f}")
 
     print("\n" + "=" * 55)
     print(f"Checks passed: {passed}/{total}")
+    if confidences:
+        avg = sum(confidences) / len(confidences)
+        print(f"Avg plan confidence: {avg:.2f} across {len(confidences)} planned scenarios")
     all_ok = passed == total
     print("RESULT:", "ALL CHECKS PASSED ✅" if all_ok else "SOME CHECKS FAILED ❌")
     return 0 if all_ok else 1

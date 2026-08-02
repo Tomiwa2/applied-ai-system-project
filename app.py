@@ -281,13 +281,19 @@ if st.button("🪄 Plan my day with AI"):
         st.markdown("### Today's AI-planned schedule")
         st.table(result.plan)
 
-        if result.conflicts_remaining == 0:
-            st.success("✅ The scheduler confirms this plan is conflict-free.")
-        else:
-            st.error(
-                f"⚠️ {result.conflicts_remaining} conflict(s) could not be resolved "
-                "automatically."
-            )
+        col_status, col_conf = st.columns([3, 1])
+        with col_status:
+            if result.conflicts_remaining == 0:
+                st.success("✅ The scheduler confirms this plan is conflict-free.")
+            else:
+                st.error(
+                    f"⚠️ {result.conflicts_remaining} conflict(s) could not be resolved "
+                    "automatically."
+                )
+        with col_conf:
+            st.metric("Plan confidence", f"{result.confidence:.2f}")
+        if result.confidence_notes:
+            st.caption("Confidence deductions: " + "; ".join(result.confidence_notes))
 
         st.markdown("**Explanation**")
         st.markdown(result.explanation)

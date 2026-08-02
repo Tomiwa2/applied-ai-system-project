@@ -14,7 +14,8 @@ describes.
 > **The one idea that makes this trustworthy:** the language model *proposes*
 > tasks, but it never gets to *decide* whether the day is conflict-free. That
 > verdict comes only from the rule-based `Scheduler` — so the AI cannot
-> hallucinate a clean schedule
+> hallucinate a clean schedule    
+
 
 ---
 
@@ -130,6 +131,7 @@ Backend: stub
   • [repair] Moved 'Walk' from 08:00 to 08:30 so it no longer clashes with 'Feed' (08:00).
   • [repair] Moved 'Grooming' from 15:00 to 08:10 so it no longer clashes with 'Vet visit' (15:00).
   • [verify] oracle confirms the day is conflict-free
+  • [confidence] plan confidence 1.00
   • [explain] wrote plain-language explanation
 
 📅 --- Today's plan ---
@@ -140,6 +142,8 @@ Backend: stub
  18:00  Feed        Cooper  10 min  high
 
 ✅ The scheduler confirms this day is conflict-free.
+
+📊 Plan confidence: 1.00
 ```
 
 Run it with **no arguments** (`python agent_cli.py`) to use the built-in sample.
@@ -158,7 +162,7 @@ the explanation, the repair list, and an expandable reasoning log.
 
 ```bash
 python -m pytest            # 32 passing tests (scheduler + agent)
-python evaluate.py          # reliability evaluation → "18/18 checks passed"
+python evaluate.py          # reliability evaluation → "21/21 checks passed"
 ```
 
 ## 6. Sample interactions
@@ -183,11 +187,14 @@ Input: `"Walk Rex at 9am for 30 minutes and feed Rex at 9am."`
   • [validate] 2 task(s) passed the guardrails
   • [repair] Moved 'Walk' from 09:00 to 08:00 so it no longer clashes with 'Feed' (09:00).
   • [verify] oracle confirms the day is conflict-free
+  • [confidence] plan confidence 1.00
 
  08:00  Walk   30 min  medium
  09:00  Feed   10 min  high
 
 ✅ The scheduler confirms this day is conflict-free.
+
+📊 Plan confidence: 1.00
 ```
 
 Both tasks were booked at 9am. The agent keeps the higher-priority **Feed** at
@@ -226,17 +233,20 @@ Trust is built from **five** layers, not one:
 
 ### Evaluation results
 
-The reliability harness [`evaluate.py`](evaluate.py) runs **six scenarios** on the
-deterministic stub backend (reproducible, no API key needed):
+The reliability harness [`evaluate.py`](evaluate.py) runs **seven scenarios** on the
+deterministic stub backend (reproducible, no API key needed) and reports a
+**confidence rating** for each produced plan:
 
 ```bash
 python evaluate.py
 # ...
-# Checks passed: 18/18
+# Checks passed: 21/21
+# Avg plan confidence: 0.95 across 5 planned scenarios
 # RESULT: ALL CHECKS PASSED ✅
 ```
 
-**Summary:** *18 of 18 checks passed across 6 scenarios.* Every case — including
+**Summary:** *21 of 21 checks passed across 7 scenarios; average plan confidence
+0.95.* Every case — including
 empty and nonsense input — was handled gracefully: the agent never crashed and
 never scheduled a task it couldn't verify. The single biggest reliability gain
 came from adding the deterministic **oracle + repair loop** — before it, a plan
@@ -251,6 +261,7 @@ conflict-free.
 | `"asdf qwerty zxcv 123 !!!"` | no tasks hallucinated into the schedule | ✅ Pass |
 | `"groom my cat Mochi at some point today"` | unscheduled task still plans; conflict-free | ✅ Pass |
 | `"walk Rex 10am 30min, feed Rex 10am, meds Rex 10am"` | three-way pile-up fully de-conflicted | ✅ Pass |
+| `"walk Rex 8am 600 min and feed Rex 8am 600 min"` | impossible day: agent flags the leftover conflict (doesn't fake a clean plan) and drops confidence to **0.75** | ✅ Pass |
 
 The output guardrail also drops malformed model output before it can reach the
 scheduler (**input → behavior → result**):
@@ -330,6 +341,23 @@ design that let the model report its own "no conflicts" verdict — which I repl
 with the deterministic oracle. Main limitation: the offline stub is a rule parser,
 not a real understander (single-pet, no real dates). See the model card for the
 full write-up.
+
+## 11. Stretch features (bonus)
+
+Two optional stretch features, both building directly on the agentic core:
+
+- **Agentic Workflow Enhancement.** The system *is* a multi-step agent — tool-like
+  calls to `detect_conflicts()` and `find_next_available_slot()`, planning steps,
+  and a plan → check → repair decision chain. Its intermediate **reasoning traces**
+  are captured in
+  [`ai_interactions.md`](ai_interactions.md#final-project--agentic-reasoning-traces)
+  and written live to `agent_runs.log` on every run.
+- **Test Harness / Evaluation Script.** [`evaluate.py`](evaluate.py) runs seven
+  predefined inputs and prints pass/fail **plus a per-plan confidence rating** and
+  an average. Confidence starts at 1.0 and drops for unresolved conflicts, guardrail
+  drops, and grounding warnings — e.g. the "impossible day" scenario correctly
+  scores **0.75** while clean plans score **1.00**. The rating also shows in the CLI
+  and the Streamlit UI.
 
 ---
 

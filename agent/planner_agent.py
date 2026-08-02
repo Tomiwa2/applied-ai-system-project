@@ -104,6 +104,32 @@ class PlannerAgent:
             return a
         return b
 
+    @staticmethod
+    def _score_confidence(result: PlanResult) -> tuple[float, list[str]]:
+        """A simple, explainable confidence score for the produced plan.
+
+        Starts at 1.0 and deducts for the things that mean the agent had to
+        guess or couldn't fully verify: unresolved conflicts, proposals dropped
+        at the guardrail, and grounding/uncertainty warnings. This is a
+        transparency signal, not a probability — every deduction is listed in
+        `confidence_notes`.
+        """
+        confidence = 1.0
+        notes: list[str] = []
+        if result.conflicts_remaining:
+            drop = min(0.50, 0.25 * result.conflicts_remaining)
+            confidence -= drop
+            notes.append(f"-{drop:.2f}: {result.conflicts_remaining} unresolved conflict(s)")
+        if result.rejected:
+            drop = min(0.30, 0.10 * len(result.rejected))
+            confidence -= drop
+            notes.append(f"-{drop:.2f}: {len(result.rejected)} proposal(s) dropped at the guardrail")
+        if result.warnings:
+            drop = min(0.20, 0.10 * len(result.warnings))
+            confidence -= drop
+            notes.append(f"-{drop:.2f}: {len(result.warnings)} uncertainty warning(s)")
+        return max(0.0, round(confidence, 2)), notes
+
     def _rows(self, tasks: list[Task]) -> list[dict]:
         """Display rows for the UI/CLI, in the plan's sorted order."""
         return [
@@ -205,6 +231,11 @@ class PlannerAgent:
         plan_tasks = scheduler.generate_plan()  # pending tasks, sorted into the day
         result.plan_tasks = plan_tasks
         result.plan = self._rows(plan_tasks)
+
+        # Confidence rating for the produced plan (transparency signal).
+        result.confidence, result.confidence_notes = self._score_confidence(result)
+        self._log(result, "confidence", f"plan confidence {result.confidence:.2f}")
+
         try:
             result.explanation = self.client.explain(request, result.plan, result.moves)
         except Exception as exc:  # noqa: BLE001 - explanation is best-effort

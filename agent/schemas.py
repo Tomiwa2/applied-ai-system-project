@@ -93,3 +93,9 @@ class PlanResult:
     rejected: list[dict] = field(default_factory=list)  # dropped proposals + reasons
     steps: list[AgentStep] = field(default_factory=list)
     explanation: str = ""
+    # How much to trust this plan, in [0, 1]. 1.0 = day is conflict-free, nothing
+    # was dropped at the guardrail, and nothing was flagged as a possible
+    # hallucination; each of those lowers it. `confidence_notes` explains the
+    # deductions. 0.0 when no plan was produced (e.g. a rejected request).
+    confidence: float = 0.0
+    confidence_notes: list[str] = field(default_factory=list)
