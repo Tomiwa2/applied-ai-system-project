@@ -14,7 +14,7 @@ describes.
 > **The one idea that makes this trustworthy:** the language model *proposes*
 > tasks, but it never gets to *decide* whether the day is conflict-free. That
 > verdict comes only from the rule-based `Scheduler` — so the AI cannot
-> hallucinate a clean schedule.
+> hallucinate a clean schedule
 
 ---
 
