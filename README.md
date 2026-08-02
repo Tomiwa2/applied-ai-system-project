@@ -29,7 +29,7 @@ system falls back to a deterministic offline backend):
   correctly produces nothing.
 - **Reliability & guardrails** → [§7 Reliability, evaluation & guardrails](#7-reliability-evaluation--guardrails)
   — `python evaluate.py` → **21/21 checks passed**, avg plan confidence **0.95**.
-- **Tests** → `python -m pytest` → **32 passing** (19 scheduler + 13 agent).
+- **Tests** → `python -m pytest` → **32 passing** (19 scheduler + 13 agent)
 
 ---
 
