@@ -364,3 +364,66 @@ and verify each one independently, instead of asking it to reason about the whol
 app at once. Good architecture didn't just produce cleaner code; it made me a more
 effective *director* of the AI, because I always knew exactly where a change
 belonged and how to check that it was right.
+
+---
+
+<a name="final-project-reflection--ai-collaboration"></a>
+## Final Project Reflection — AI Collaboration
+
+*This section covers the AI 110 final project: extending PawPal+ into
+**PawPal+ Copilot**, an agentic AI planner.*
+
+### How I used AI during development
+
+I used an AI assistant as a **design partner and pair-programmer** across the
+whole build:
+
+- **Prompting / design.** I described the goal ("let an owner plan a day in
+  plain English, but keep the guarantees my scheduler already provides") and we
+  worked out the core architecture together: an `LLMClient` interface with two
+  backends, guardrails on both sides of the model, and a bounded repair loop.
+- **Debugging.** When the offline stub only produced *one* feeding for "feed at
+  7am **and** 6pm," the AI helped me trace it to my clause-splitting on the word
+  "and," and we redesigned the parser to carry a stray time onto the current
+  task.
+- **Testing.** The AI drafted property tests (guardrails drop bad durations, the
+  repair loop resolves a same-time clash) — and one of *those* tests was itself
+  wrong (it used a pet name that appeared in the request, so the grounding check
+  correctly considered it grounded), which was a useful reminder to read AI
+  output critically rather than trust it.
+
+### One helpful and one flawed AI suggestion
+
+- **Most helpful:** the suggestion to make the deterministic `Scheduler` the
+  *oracle* — the LLM proposes tasks, but `detect_conflicts()` alone decides
+  whether the day is clash-free. This turned "trust the AI" into "verify the AI
+  with code I already had," and it's the backbone of the whole reliability story.
+- **Most flawed:** an early version of the plan had the LLM *report* whether the
+  schedule had conflicts (asking it to return a `conflicts: []` field). That's
+  exactly the kind of claim a model can get wrong or hallucinate. I rejected it
+  and replaced it with the rule-based oracle + repair loop, so the model never
+  gets to assert something the code can check for certain.
+
+### System limitations & future improvements
+
+- **The offline stub is a rule parser, not an understander.** It handles the
+  common phrasings well and is deterministic (which is great for testing), but a
+  real request with unusual wording is better served by the Claude backend. In
+  particular, the stub attributes every task to a single detected pet, so a
+  multi-pet request ("brush the cat too") can mis-assign the second pet.
+- **Dates are simplified.** The agent plans a single conflict-free "today" and
+  leaves `due_date` unset; the underlying scheduler is already date-aware, so a
+  natural next step is resolving "Thursday 3pm" to a real date.
+- **Future work:** multi-pet natural-language handling in the stub, a
+  **confidence score** per plan (e.g. how much guessing the parser did), and a
+  self-critique pass where a second model call reviews the final schedule for
+  anything the rules can't catch (unrealistic ordering, missing rest time).
+
+### Key takeaway
+
+The most important thing I learned is that **the right role for an LLM in a
+reliable system is "proposer," not "decider."** Everything trustworthy about
+PawPal+ Copilot comes from pairing the model's flexibility (understanding messy
+English) with the certainty of code I could verify (the scheduler). The AI is
+genuinely useful *because* it is fenced in by guardrails and an oracle — not in
+spite of them.

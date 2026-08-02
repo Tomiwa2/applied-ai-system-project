@@ -6,3 +6,9 @@ __pycache__/
 
 # Runtime persistence file written by Owner.save_to_json() (user data, not source).
 data.json
+
+# Secrets — never commit the API key. Keep .env.example (the template) tracked.
+.env
+
+# Runtime log written by the agent (not source).
+agent_runs.log

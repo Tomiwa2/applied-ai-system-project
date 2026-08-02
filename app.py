@@ -3,6 +3,7 @@ from datetime import time
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Task, Scheduler, Priority
+from agent import PlannerAgent, get_client
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -236,3 +237,76 @@ if st.button("Generate schedule"):
             )
     elif plan:
         st.success("No conflicts — the day flows cleanly. ✅")
+
+# --- AI Planner (PawPal+ Copilot) -------------------------------------------
+# The final-project extension: describe the day in plain English and let the
+# agent parse -> validate -> conflict-check -> repair -> explain. The Scheduler
+# above is reused as the trusted "oracle" that guarantees the AI's plan is clean.
+st.divider()
+st.subheader("🤖 AI Planner — PawPal+ Copilot")
+st.markdown(
+    "Describe your pet's day in plain English and let the agent build a "
+    "**conflict-checked** daily schedule. The AI *proposes* the tasks, but the "
+    "same scheduler you used above is the **oracle** that decides whether the "
+    "day is actually clash-free — the model never gets to make that call itself."
+)
+
+# Pick the backend once (real Claude if a key is present, else the offline stub).
+_backend = get_client()
+if _backend.name == "claude":
+    st.caption("Backend: **Claude API** ✅ (real model)")
+else:
+    st.caption(
+        "Backend: **offline stub** (deterministic, no API key needed) — "
+        "set `ANTHROPIC_API_KEY` to switch on the real Claude model."
+    )
+
+nl_request = st.text_area(
+    "Your request",
+    value=(
+        "I just got a puppy named Cooper. He needs a 30-minute walk at 8am, "
+        "feeding at 8am and 6pm, a vet visit at 3pm for 45 minutes, and a "
+        "grooming session at 3pm."
+    ),
+    height=110,
+)
+
+if st.button("🪄 Plan my day with AI"):
+    with st.spinner("Planning and conflict-checking…"):
+        result = PlannerAgent(_backend).plan(nl_request)
+
+    if not result.ok:
+        st.warning(result.error)
+    else:
+        st.markdown("### Today's AI-planned schedule")
+        st.table(result.plan)
+
+        if result.conflicts_remaining == 0:
+            st.success("✅ The scheduler confirms this plan is conflict-free.")
+        else:
+            st.error(
+                f"⚠️ {result.conflicts_remaining} conflict(s) could not be resolved "
+                "automatically."
+            )
+
+        st.markdown("**Explanation**")
+        st.markdown(result.explanation)
+
+        if result.moves:
+            with st.expander(f"🔧 Conflict repairs the agent made ({len(result.moves)})"):
+                for move in result.moves:
+                    st.write("• " + move)
+
+        with st.expander("🧠 Agent reasoning log (how it got here)"):
+            for step in result.steps:
+                st.write(str(step))
+
+        if result.rejected or result.warnings:
+            with st.expander(
+                f"🛡️ Guardrail notes "
+                f"({len(result.rejected)} dropped, {len(result.warnings)} warning(s))"
+            ):
+                for r in result.rejected:
+                    st.write(f"🚫 Dropped a proposal — {r['reason']}")
+                for w in result.warnings:
+                    st.write("⚠️ " + w)

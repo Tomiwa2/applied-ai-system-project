@@ -1,0 +1,50 @@
+%% PawPal+ Copilot — system architecture / data flow.
+%% Covers the three things the assignment asks a system diagram to show:
+%%   1. the main components (agent, guardrails, evaluator/oracle, tester),
+%%   2. how data flows (INPUT -> PROCESS -> OUTPUT),
+%%   3. where humans and testing check the AI's results.
+%% This .mmd source is the source of truth; a PNG export lives in
+%% ../assets/agent_architecture.png. Render at https://mermaid.live.
+flowchart TD
+    U([Natural-language request - INPUT]) --> IG{Input guardrail<br/>validate_request}
+    IG -- empty / junk / too long --> REJ([Reject with reason])
+    IG -- ok --> LLM
+
+    subgraph AGENT[Agent - the AI planning loop - PROCESS]
+        direction TB
+        LLM[[propose_tasks - LLM]] --> BK{{Backend:<br/>Claude API or offline stub}}
+        BK --> OG{Output guardrail<br/>+ grounding check}
+        OG --> TREE[Build Owner to Pet to Task tree]
+        TREE --> ORACLE{{Scheduler.detect_conflicts<br/>ORACLE / EVALUATOR}}
+        ORACLE -- conflict --> REPAIR[Move lower-priority task<br/>to next free slot]
+        REPAIR --> ORACLE
+        ORACLE -- clash-free --> PLAN[generate_plan]
+        PLAN --> EXPLAIN[[explain - LLM]]
+    end
+    OG -- invalid task --> DROP[/Drop + log/]
+
+    EXPLAIN --> OUT([Conflict-free plan + explanation<br/>+ reasoning log - OUTPUT])
+
+    %% --- Where the AI's results get checked: rules, humans, and tests ---
+    OUT --> HUMAN([Owner reviews the plan and<br/>reasoning log in the UI - HUMAN CHECK])
+    TEST[/Testing that checks the AI:<br/>evaluate.py reliability harness<br/>+ tests pytest suite/]
+    TEST -. verifies .-> OG
+    TEST -. verifies .-> ORACLE
+
+    %% --- Audit trail ---
+    LOG[(agent_runs.log<br/>+ in-memory step log)]
+    IG -.-> LOG
+    OG -.-> LOG
+    ORACLE -.-> LOG
+    REPAIR -.-> LOG
+    EXPLAIN -.-> LOG
+
+    classDef io fill:#e8f0fe,stroke:#4285f4,color:#111;
+    classDef check fill:#e6f4ea,stroke:#137333,color:#111,stroke-width:2px;
+    classDef warn fill:#fef7e0,stroke:#b06000,color:#111;
+    classDef log fill:#f1f3f4,stroke:#5f6368,color:#111;
+
+    class U,REJ,OUT io;
+    class ORACLE,HUMAN,TEST check;
+    class DROP warn;
+    class LOG log;

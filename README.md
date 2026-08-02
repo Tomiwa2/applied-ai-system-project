@@ -1,4 +1,209 @@
-# PawPal+ (Module 2 Project)
+# 🐾 PawPal+ Copilot — Applied AI System (AI 110 Final Project)
+
+**PawPal+ Copilot** turns a busy pet owner's plain-English request —
+*"I got a puppy named Cooper; walk him at 8am, feed at 8am and 6pm, vet at 3pm
+for 45 minutes, and grooming at 3pm"* — into a **validated, conflict-free daily
+schedule**, and explains every decision it made.
+
+It is an **agentic AI workflow**: the AI **plans** (parses the request into tasks),
+**acts** (builds a schedule), **checks its own work** (a deterministic scheduler
+detects clashes), and **fixes** them automatically (moves tasks until the day is
+clean) — the exact "plan, act, and check its own work" pattern the assignment
+describes.
+
+> **The one idea that makes this trustworthy:** the language model *proposes*
+> tasks, but it never gets to *decide* whether the day is conflict-free. That
+> verdict comes only from the rule-based `Scheduler` — so the AI cannot
+> hallucinate a clean schedule.
+
+---
+
+## 1. Base project & original scope
+
+This system **extends the Module 2 project, PawPal+** (the original write-up
+starts under [The base project](#the-base-project-pawpal-module-2) below).
+
+- **Original goal:** help a pet owner plan care tasks (walks, feeding, meds,
+  grooming, …) for one or more pets, respecting time and priority constraints.
+- **Original capabilities:** an object-oriented scheduling engine
+  (`pawpal_system.py`) with time-sorting, **date-aware conflict detection**
+  (sweep-line), a **next-available-slot** finder, daily/weekly recurrence,
+  filtering, JSON persistence, a UML class diagram, a Streamlit UI, and an
+  18-test suite. It was entirely **rule-based — no AI**.
+- **What this final project adds:** a natural-language, **agentic AI layer**
+  (`agent/`) on top of that engine, so the owner can plan a day by *describing*
+  it instead of clicking in every task by hand.
+
+## 2. The new AI feature — an agentic planning loop
+
+The new code lives in [`agent/`](agent/) and runs this loop:
+
+| Step | What happens | Where |
+|---|---|---|
+| **Input guardrail** | reject empty / junk / oversized requests | `guardrails.validate_request` |
+| **Plan** | the LLM parses the request into structured task proposals | `llm_client.propose_tasks` |
+| **Output guardrail** | every proposal must build a valid `Task` (positive duration, real time/priority) + a **grounding check** flags hallucinated tasks | `guardrails.validate_and_build_tasks` |
+| **Check (oracle)** | the deterministic `Scheduler.detect_conflicts()` decides if the day clashes | `pawpal_system.py` |
+| **Fix (repair loop)** | move the lower-priority task to `find_next_available_slot()`, re-check, repeat (bounded) | `planner_agent.py` |
+| **Explain** | the LLM writes a plain-language account of the plan and any repairs | `llm_client.explain` |
+
+**Two interchangeable backends** implement the LLM interface:
+
+- **`AnthropicClient`** — the real **Claude API** (`claude-opus-5` by default),
+  using **structured outputs** so parsing returns guaranteed-valid JSON.
+- **`StubClient`** — a deterministic, dependency-free rule-based parser that
+  needs **no API key**. It makes the tests and the evaluation harness fully
+  reproducible, and doubles as a **graceful-degradation fallback** so the app
+  always runs. The backend is auto-selected (`get_client`): real Claude when
+  `ANTHROPIC_API_KEY` is set, otherwise the stub.
+
+## 3. Architecture
+
+**Main components:** input/output guardrails, the LLM agent (Claude API or
+offline stub), the deterministic `Scheduler` acting as **evaluator/oracle**, the
+repair loop, and the **tester** (`evaluate.py` + `tests/`). **Data flows**
+input → process → output, and the AI's results are **checked in three places**:
+the automated oracle, a human reviewing the plan in the UI, and the test/eval
+harness. The Mermaid **source** is
+[`diagrams/agent_architecture.mmd`](diagrams/agent_architecture.mmd) (a PNG
+export belongs in [`assets/`](assets/)).
+
+```mermaid
+flowchart TD
+    U([Natural-language request - INPUT]) --> IG{Input guardrail}
+    IG -- junk/empty --> REJ([Reject with reason])
+    IG -- ok --> LLM[propose_tasks: LLM]
+    LLM --> BK{{Backend: Claude API or offline stub}}
+    BK --> OG{Output guardrail: build valid Tasks + grounding check}
+    OG -- invalid --> DROP[/Drop and log/]
+    OG -- valid --> TREE[Build Owner - Pet - Task tree]
+    TREE --> ORACLE{{Scheduler.detect_conflicts - ORACLE / EVALUATOR}}
+    ORACLE -- conflict --> REPAIR[Move lower-priority task to next free slot]
+    REPAIR --> ORACLE
+    ORACLE -- clash-free --> PLAN[generate_plan]
+    PLAN --> EXPLAIN[explain: LLM write-up]
+    EXPLAIN --> OUT([Conflict-free plan + explanation + reasoning log - OUTPUT])
+    OUT --> HUMAN([Owner reviews plan and reasoning log in the UI - HUMAN CHECK])
+    TEST[/Testing: evaluate.py reliability harness + tests pytest suite/]
+    TEST -. verifies .-> OG
+    TEST -. verifies .-> ORACLE
+```
+
+## 4. Setup
+
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. (Optional) enable the real Claude model
+cp .env.example .env             # then paste your key into ANTHROPIC_API_KEY
+# ...or just export it:
+export ANTHROPIC_API_KEY="sk-ant-..."   # Windows: setx ANTHROPIC_API_KEY "sk-ant-..."
+```
+
+**No API key? Everything still works** — the system falls back to the offline
+stub automatically. Force a backend with `PAWPAL_LLM=stub` or `PAWPAL_LLM=claude`.
+
+## 5. Run it end-to-end
+
+### Command-line demo
+
+```bash
+python agent_cli.py "I just got a puppy named Cooper. He needs a 30-minute walk at 8am, feeding at 8am and 6pm, a vet visit at 3pm for 45 minutes, and a grooming session at 3pm."
+```
+
+Sample output (offline stub backend — note the agent **detecting and repairing
+two conflicts**, then the oracle confirming the day is clean):
+
+```
+🐾 PawPal+ Copilot
+Backend: stub
+
+--- Agent reasoning log ---
+  • [input-guardrail] request accepted
+  • [parse] model proposed 5 task(s)
+  • [validate] 5 task(s) passed the guardrails
+  • [repair] Moved 'Walk' from 08:00 to 08:30 so it no longer clashes with 'Feed' (08:00).
+  • [repair] Moved 'Grooming' from 15:00 to 08:10 so it no longer clashes with 'Vet visit' (15:00).
+  • [verify] oracle confirms the day is conflict-free
+  • [explain] wrote plain-language explanation
+
+📅 --- Today's plan ---
+ 08:00  Feed        Cooper  10 min  high
+ 08:10  Grooming    Cooper  20 min  low
+ 08:30  Walk        Cooper  30 min  medium
+ 15:00  Vet visit   Cooper  45 min  high
+ 18:00  Feed        Cooper  10 min  high
+
+✅ The scheduler confirms this day is conflict-free.
+```
+
+Run it with **no arguments** (`python agent_cli.py`) to use the built-in sample.
+
+### Web UI
+
+```bash
+python -m streamlit run app.py
+```
+
+Scroll to **"🤖 AI Planner — PawPal+ Copilot"**, type a request, and click
+**"Plan my day with AI"** to get the schedule, the conflict-free confirmation,
+the explanation, the repair list, and an expandable reasoning log.
+
+### Tests & the reliability harness
+
+```bash
+python -m pytest            # 32 passing tests (scheduler + agent)
+python evaluate.py          # reliability evaluation → "18/18 checks passed"
+```
+
+## 6. Reliability, evaluation & guardrails
+
+Trust is built from **five** layers, not one:
+
+1. **Input guardrail** — rejects empty/junk/oversized requests before any API call.
+2. **Output guardrail** — every LLM proposal must construct a real `Task`
+   (positive duration, valid `HH:MM` time, real priority) or it's dropped and
+   logged; a **grounding check** flags tasks not traceable to the request.
+3. **Deterministic oracle** — conflicts are decided by `detect_conflicts()`,
+   never by the model, so a clean day is *provably* clean.
+4. **Graceful degradation** — no key, a bad key, or an API error all fall back
+   to the offline stub; the app never hard-fails.
+5. **Bounded, logged repair loop** — capped iterations (no infinite loops) with
+   every step written to `agent_runs.log` and shown in the UI.
+
+`evaluate.py` exercises all of this against fixed scenarios. Examples
+(**input → behavior → result**):
+
+| Input | Guardrail / behavior | Result |
+|---|---|---|
+| `"Walk Rex at 9am for 30 min and feed Rex at 9am"` | oracle detects the 9am clash → repair loop moves the lower-priority feed | ✅ conflict-free, 1 task moved |
+| `"   "` (blank) | **input guardrail** rejects it before any model call | ✋ `ok=False`, reason returned, 0 tasks |
+| `"asdf qwerty 123 !!!"` | no task keywords found | 0 tasks, nothing hallucinated into the schedule |
+| proposal `{"task":"Walk","duration":0,...}` | **output guardrail** — `Task` rejects a non-positive duration | 🚫 dropped + logged, never scheduled |
+| a task with no basis in the request | **grounding check** | ⚠️ flagged "please double-check" |
+
+## 7. Reflection on AI collaboration
+
+A full write-up is in [`reflection.md`](reflection.md#final-project-reflection--ai-collaboration).
+In short: AI pair-programming was **most helpful** for designing the
+"LLM-proposes / rules-verify" split and for the structured-output schema; the
+most **flawed** suggestion was an early design that trusted the model's own
+"no conflicts" claim — which I replaced with the deterministic oracle. Main
+limitation: the offline stub is a simple rule parser, not a real understander;
+future work is multi-pet natural-language handling and confidence scoring.
+
+---
+
+<a name="the-base-project-pawpal-module-2"></a>
+## The base project: PawPal+ (Module 2)
+
+*Everything below is the original Module 2 project that this final project
+extends.*
 
 You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
 
