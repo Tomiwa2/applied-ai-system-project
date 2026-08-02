@@ -161,7 +161,55 @@ python -m pytest            # 32 passing tests (scheduler + agent)
 python evaluate.py          # reliability evaluation → "18/18 checks passed"
 ```
 
-## 6. Reliability, evaluation & guardrails
+## 6. Sample interactions
+
+Three runs on the offline stub backend (behavior is the same with the Claude
+backend — just add an API key). Each shows the **input**, what the agent did, and
+the **result**.
+
+**Example 1 — a full day with two conflicts** (the full output is in §5 above).
+Input: *"…puppy named Cooper… walk at 8am, feed at 8am and 6pm, vet at 3pm for 45
+minutes, grooming at 3pm."* The agent finds two clashes (walk vs. feed at 08:00;
+grooming vs. vet at 15:00), moves **Walk → 08:30** and **Grooming → 08:10**, and
+the oracle confirms the day is conflict-free.
+
+**Example 2 — one same-time conflict, automatically repaired.**
+Input: `"Walk Rex at 9am for 30 minutes and feed Rex at 9am."`
+
+```
+--- Agent reasoning log ---
+  • [input-guardrail] request accepted
+  • [parse] model proposed 2 task(s)
+  • [validate] 2 task(s) passed the guardrails
+  • [repair] Moved 'Walk' from 09:00 to 08:00 so it no longer clashes with 'Feed' (09:00).
+  • [verify] oracle confirms the day is conflict-free
+
+ 08:00  Walk   30 min  medium
+ 09:00  Feed   10 min  high
+
+✅ The scheduler confirms this day is conflict-free.
+```
+
+Both tasks were booked at 9am. The agent keeps the higher-priority **Feed** at
+09:00 and moves the **Walk** to 08:00 — a clash the model never had to notice,
+because the scheduler catches it.
+
+**Example 3 — nothing schedulable (no hallucination).**
+Input: `"asdf qwerty zxcv 123 !!!"`
+
+```
+--- Agent reasoning log ---
+  • [input-guardrail] request accepted
+  • [parse] model proposed 0 task(s)
+  ⚠ [validate] no valid tasks after guardrails
+
+⚠️  No valid pet-care tasks could be extracted from that request.
+```
+
+No pet-care tasks are found, so the agent returns a clear message instead of
+inventing work — the guardrails keep junk out of the schedule.
+
+## 7. Reliability, evaluation & guardrails
 
 Trust is built from **five** layers, not one:
 
@@ -187,7 +235,60 @@ Trust is built from **five** layers, not one:
 | proposal `{"task":"Walk","duration":0,...}` | **output guardrail** — `Task` rejects a non-positive duration | 🚫 dropped + logged, never scheduled |
 | a task with no basis in the request | **grounding check** | ⚠️ flagged "please double-check" |
 
-## 7. Reflection on AI collaboration
+## 8. Design decisions & trade-offs
+
+- **The LLM proposes; the rules decide.** The model turns messy English into
+  candidate tasks, but `Scheduler.detect_conflicts()` is the *only* thing that
+  declares a day conflict-free. *Trade-off:* the AI can't hallucinate a clean
+  schedule, but the repair loop uses a simple heuristic — move the loser to the
+  earliest free slot — not a globally optimal packing (which is why grooming can
+  land at 08:10).
+- **Two backends, with a deterministic offline stub.** *Trade-off:* the stub
+  makes the tests and `evaluate.py` reproducible with no key or network, and the
+  app degrades gracefully when Claude isn't available — but the stub is a rule
+  parser, not a real understander. It handles common, single-pet phrasings and
+  leans on the Claude backend for the hard cases.
+- **Structured outputs over free-form text.** Constraining Claude to a JSON
+  schema keeps parsing from drifting into prose. *Trade-off:* a rigid shape that
+  the guardrails still re-validate rather than trust.
+- **Reuse the Module 2 engine; don't reinvent it.** The agent rebuilds the same
+  `Owner → Pet → Task` tree and calls the existing, tested scheduler.
+  *Trade-off:* it inherits that engine's scope (a single day; "the owner can't be
+  in two places at once") but gains 18 tests' worth of confidence for free.
+- **Guardrails on both sides of the model.** Cheap input checks before spending
+  an API call; strict output checks after. *Trade-off:* a borderline proposal can
+  be dropped, but nothing malformed ever reaches the scheduler.
+
+## 9. Testing summary
+
+**What works**
+
+- **32/32 pytest** — the original 18 scheduler tests plus 14 new agent tests
+  (parser, guardrails, conflict repair, end-to-end), all on the deterministic
+  stub so they're reproducible.
+- **18/18 checks in `evaluate.py`**, including a same-time clash that must be
+  repaired, a three-task pile-up that must fully de-conflict, and junk input that
+  must be rejected.
+- The repair loop resolves multi-conflict days, and the oracle independently
+  confirms the result every time.
+
+**What didn't (and how it was fixed)**
+
+- The stub first split requests on the word "and," which silently dropped the
+  second time in *"feed at 7am **and** 6pm."* I rebuilt the parser to carry a
+  stray time onto the current task, so both feedings now appear.
+- One AI-drafted test was itself wrong — it used a pet name that *did* appear in
+  the request, so the grounding check correctly treated the task as grounded. A
+  good reminder to verify test *assumptions*, not just the code under test.
+
+**What's next**
+
+- Multi-pet natural-language handling in the stub (today it attributes every task
+  to one detected pet).
+- Resolving real dates ("Thursday 3pm") — the scheduler is already date-aware.
+- A confidence score per plan and an optional self-critique pass.
+
+## 10. Reflection on AI collaboration
 
 A full write-up is in [`reflection.md`](reflection.md#final-project-reflection--ai-collaboration).
 In short: AI pair-programming was **most helpful** for designing the
