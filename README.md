@@ -28,8 +28,8 @@ starts under [The base project](#the-base-project-pawpal-module-2) below).
 - **Original capabilities:** an object-oriented scheduling engine
   (`pawpal_system.py`) with time-sorting, **date-aware conflict detection**
   (sweep-line), a **next-available-slot** finder, daily/weekly recurrence,
-  filtering, JSON persistence, a UML class diagram, a Streamlit UI, and an
-  18-test suite. It was entirely **rule-based — no AI**.
+  filtering, JSON persistence, a UML class diagram, a Streamlit UI, and a
+  19-test suite. It was entirely **rule-based — no AI**.
 - **What this final project adds:** a natural-language, **agentic AI layer**
   (`agent/`) on top of that engine, so the owner can plan a day by *describing*
   it instead of clicking in every task by hand.
@@ -254,7 +254,7 @@ Trust is built from **five** layers, not one:
 - **Reuse the Module 2 engine; don't reinvent it.** The agent rebuilds the same
   `Owner → Pet → Task` tree and calls the existing, tested scheduler.
   *Trade-off:* it inherits that engine's scope (a single day; "the owner can't be
-  in two places at once") but gains 18 tests' worth of confidence for free.
+  in two places at once") but gains 19 tests' worth of confidence for free.
 - **Guardrails on both sides of the model.** Cheap input checks before spending
   an API call; strict output checks after. *Trade-off:* a borderline proposal can
   be dropped, but nothing malformed ever reaches the scheduler.
@@ -263,7 +263,7 @@ Trust is built from **five** layers, not one:
 
 **What works**
 
-- **32/32 pytest** — the original 18 scheduler tests plus 14 new agent tests
+- **32/32 pytest** — the original 19 scheduler tests plus 13 new agent tests
   (parser, guardrails, conflict repair, end-to-end), all on the deterministic
   stub so they're reproducible.
 - **18/18 checks in `evaluate.py`**, including a same-time clash that must be
@@ -301,22 +301,23 @@ future work is multi-pet natural-language handling and confidence scoring.
 ---
 
 <a name="the-base-project-pawpal-module-2"></a>
-## The base project: PawPal+ (Module 2)
+## Reference: the underlying PawPal+ scheduling engine
 
-*Everything below is the original Module 2 project that this final project
-extends.*
+*PawPal+ Copilot (documented above) is the AI layer. The sections below document
+the original **PawPal+** scheduler it builds on — the object-oriented engine in
+`pawpal_system.py`.*
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+**PawPal+** is a Streamlit app that helps a pet owner plan care tasks for their
+pet(s). It targets a real problem: a busy owner who wants to stay consistent with
+pet care needs an assistant that can
 
-## Scenario
+- track care tasks (walks, feeding, meds, enrichment, grooming, …),
+- respect constraints (available time, priority, owner preferences), and
+- produce a daily plan and explain the reasoning behind it.
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
-
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
-
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+The design deliberately separates plain **data objects** (`Owner`, `Pet`, `Task`)
+from a **scheduling service** (`Scheduler`) — captured as a UML class diagram and
+implemented in Python behind the Streamlit UI.
 
 ## ✨ Features
 
@@ -354,35 +355,21 @@ The scheduling algorithms all live in `pawpal_system.py`:
 See [System Design (UML)](#-system-design-uml) for how these classes fit together
 and [Smarter Scheduling](#-smarter-scheduling) for per-method detail.
 
-## What you will build
+### What the app does
 
-Your final app should:
+- Lets a user enter owner + pet info and add or edit tasks (duration, priority, time).
+- Generates a daily schedule from those constraints and priorities.
+- Displays the plan clearly and flags any scheduling conflicts.
+- Is backed by a test suite covering the most important scheduling behaviors.
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+### Running the scheduler on its own
 
-## Getting started
-
-### Setup
+Installation is the same as [§4 Setup](#4-setup) above. Independently of the AI
+layer, the rule-based scheduler ships a standalone CLI demo:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python main.py     # prints a sorted plan, filters, recurrence, and a conflict check
 ```
-
-### Suggested workflow
-
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
 
 ## 🖥️ Sample Output
 
@@ -390,12 +377,15 @@ See the [Demo Walkthrough](#-demo-walkthrough) below for full, up-to-date sample
 output from `python main.py` (the sorted plan, filters, recurrence, and conflict
 check).
 
-## 🧪 Testing PawPal+
+## 🧪 Testing the scheduler
 
-Run the full test suite from the project root:
+These are the scheduler's own unit tests (`tests/test_pawpal.py`); the AI layer
+adds its own suite in `tests/test_agent.py` — see
+[§9 Testing summary](#9-testing-summary) for the combined 32-test run. To run just
+the scheduler's tests:
 
 ```bash
-python -m pytest
+python -m pytest tests/test_pawpal.py
 ```
 
 ### What the tests cover
@@ -414,7 +404,7 @@ The suite (`tests/test_pawpal.py`) exercises the core scheduling and persistence
 ```
 ============================= test session starts =============================
 platform win32 -- Python 3.13.7, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\Ire\Desktop\Codepath AI 110\ai110-module2show-pawpal-starter
+rootdir: C:\Users\Ire\Desktop\Codepath AI 110\applied-ai-system-project
 plugins: anyio-4.14.1
 collected 19 items
 
