@@ -224,16 +224,46 @@ Trust is built from **five** layers, not one:
 5. **Bounded, logged repair loop** — capped iterations (no infinite loops) with
    every step written to `agent_runs.log` and shown in the UI.
 
-`evaluate.py` exercises all of this against fixed scenarios. Examples
-(**input → behavior → result**):
+### Evaluation results
 
-| Input | Guardrail / behavior | Result |
+The reliability harness [`evaluate.py`](evaluate.py) runs **six scenarios** on the
+deterministic stub backend (reproducible, no API key needed):
+
+```bash
+python evaluate.py
+# ...
+# Checks passed: 18/18
+# RESULT: ALL CHECKS PASSED ✅
+```
+
+**Summary:** *18 of 18 checks passed across 6 scenarios.* Every case — including
+empty and nonsense input — was handled gracefully: the agent never crashed and
+never scheduled a task it couldn't verify. The single biggest reliability gain
+came from adding the deterministic **oracle + repair loop** — before it, a plan
+could contain overlapping tasks; after it, the harness confirms every plan is
+conflict-free.
+
+| Test input | Evaluation criteria | Result |
 |---|---|---|
-| `"Walk Rex at 9am for 30 min and feed Rex at 9am"` | oracle detects the 9am clash → repair loop moves the lower-priority feed | ✅ conflict-free, 1 task moved |
-| `"   "` (blank) | **input guardrail** rejects it before any model call | ✋ `ok=False`, reason returned, 0 tasks |
-| `"asdf qwerty 123 !!!"` | no task keywords found | 0 tasks, nothing hallucinated into the schedule |
-| proposal `{"task":"Walk","duration":0,...}` | **output guardrail** — `Task` rejects a non-positive duration | 🚫 dropped + logged, never scheduled |
-| a task with no basis in the request | **grounding check** | ⚠️ flagged "please double-check" |
+| `"…puppy Cooper… two walks, feed 7am & 6pm, vet 3pm for 45 min"` | ≥ 4 tasks; vet stays at 15:00; final plan conflict-free | ✅ Pass |
+| `"Walk Rex at 9am for 30 min and feed Rex at 9am"` | same-time clash detected and repaired; ≥ 1 task moved | ✅ Pass |
+| `"   "` (empty) | rejected by the input guardrail; reason returned; 0 tasks | ✅ Pass (fails safe, no crash) |
+| `"asdf qwerty zxcv 123 !!!"` | no tasks hallucinated into the schedule | ✅ Pass |
+| `"groom my cat Mochi at some point today"` | unscheduled task still plans; conflict-free | ✅ Pass |
+| `"walk Rex 10am 30min, feed Rex 10am, meds Rex 10am"` | three-way pile-up fully de-conflicted | ✅ Pass |
+
+The output guardrail also drops malformed model output before it can reach the
+scheduler (**input → behavior → result**):
+
+| Model proposal | Guardrail | Result |
+|---|---|---|
+| `{"task":"Walk","duration":0,…}` | `Task` rejects a non-positive duration | 🚫 dropped + logged, never scheduled |
+| a task not traceable to the request | grounding / anti-hallucination check | ⚠️ flagged "please double-check" |
+
+**Human review:** every plan carries a step-by-step reasoning log (written to
+`agent_runs.log` and shown in the UI's "Agent reasoning log" panel), so a person
+can audit *why* the agent moved a task — without re-running anything or watching a
+live demo.
 
 ## 8. Design decisions & trade-offs
 
