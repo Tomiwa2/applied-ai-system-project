@@ -16,6 +16,20 @@ describes.
 > verdict comes only from the rule-based `Scheduler` — so the AI cannot
 > hallucinate a clean schedule    
 
+## ✅ Execution evidence (quick map)
+
+Want proof it runs? Every item below is **reproducible with no API key** (the
+system falls back to a deterministic offline backend):
+
+- **End-to-end run** → [§5 Run it end-to-end](#5-run-it-end-to-end) — the Cooper
+  request, with the agent detecting and repairing two conflicts, then the oracle
+  confirming a clean day.
+- **AI-feature behavior** → [§6 Sample interactions](#6-sample-interactions) —
+  three runs: a full day, a single-clash auto-repair, and a junk input that
+  correctly produces nothing.
+- **Reliability & guardrails** → [§7 Reliability, evaluation & guardrails](#7-reliability-evaluation--guardrails)
+  — `python evaluate.py` → **21/21 checks passed**, avg plan confidence **0.95**.
+- **Tests** → `python -m pytest` → **32 passing** (19 scheduler + 13 agent).
 
 ---
 
@@ -307,9 +321,9 @@ live demo.
 - **32/32 pytest** — the original 19 scheduler tests plus 13 new agent tests
   (parser, guardrails, conflict repair, end-to-end), all on the deterministic
   stub so they're reproducible.
-- **18/18 checks in `evaluate.py`**, including a same-time clash that must be
-  repaired, a three-task pile-up that must fully de-conflict, and junk input that
-  must be rejected.
+- **21/21 checks in `evaluate.py`** across seven scenarios, including a same-time
+  clash that must be repaired, a three-task pile-up that must fully de-conflict,
+  and junk input that must be rejected.
 - The repair loop resolves multi-conflict days, and the oracle independently
   confirms the result every time.
 
